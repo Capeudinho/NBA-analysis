@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Relatório{% endblock %} · NBA 2025-26: Knicks × Suns</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <button class="menu-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="sidebar">☰</button>
+    <a class="brand" href="{{ url_for('main.index') }}">
+      <span class="brand-mark" aria-hidden="true">
+        <span class="dot" style="background: {{ TEAMS.NYK.color }}"></span><span class="dot" style="background: {{ TEAMS.PHX.color }}"></span>
+      </span>
+      <span>NBA 2025-26 · <strong>Knicks × Suns</strong></span>
+    </a>
+    <span class="topbar-note">Laboratório de Ciência de Dados · Projeto 1</span>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" id="sidebar" aria-label="Seções do relatório">
+      {% for group, items in NAV %}
+        <div class="nav-group">
+          <p class="nav-title">{{ group }}</p>
+          <ul>
+            {% for endpoint, number, label in items %}
+              <li>
+                <a href="{{ url_for(endpoint) }}" class="{{ 'active' if page == endpoint else '' }}"{% if page == endpoint %} aria-current="page"{% endif %}>
+                  <span class="nav-number">{{ number }}</span><span>{{ label }}</span>
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </nav>
+
+    <main class="content">
+      {% block content %}{% endblock %}
+
+      <footer class="page-footer">
+        <p><strong>Convenções do relatório.</strong> Todas as tabelas usam {{ DECIMALS }} casas decimais e vírgula como
+          separador decimal; contagens aparecem como inteiros e valores-p com 4 casas. Desvio padrão e variância são
+          amostrais (n − 1); quartis por interpolação linear (tipo 7, padrão numpy/pandas); CV em percentual.
+          As unidades são sempre "por jogo" do time.</p>
+        <p>Fonte: <code>stats_times_regular_final.csv</code> — estatísticas de times da temporada regular 2025-26 da NBA.</p>
+      </footer>
+    </main>
+  </div>
+
+  <script src="{{ url_for('main.plotly_js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

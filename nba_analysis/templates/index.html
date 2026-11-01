@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Visão geral{% endblock %}
+{% block content %}
+{{ m.page_header("0", "Análise exploratória: New York Knicks × Phoenix Suns",
+   "Este sistema web <strong>é o relatório do Projeto 1</strong>. Cada seção do menu corresponde a um item do
+   enunciado e traz (a) os resultados — tabelas e gráficos interativos — e (b) a interpretação textual, gerada a
+   partir dos próprios números calculados.") }}
+
+<section class="section">
+  <div class="section-head">
+    <h2>A base em números</h2>
+    <span class="section-tag">Temporada regular 2025-26</span>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><div class="value">{{ overview.rows|int }}</div><div class="label">linhas (time × partida)</div></div>
+    <div class="kpi"><div class="value">{{ overview.columns }}</div><div class="label">colunas originais</div></div>
+    <div class="kpi"><div class="value">{{ overview.games|int }}</div><div class="label">partidas distintas</div></div>
+    <div class="kpi"><div class="value">{{ overview.teams }}</div><div class="label">times da NBA</div></div>
+    <div class="kpi"><div class="value">{{ overview.team_games.NYK }}</div><div class="label">jogos do New York Knicks</div></div>
+    <div class="kpi"><div class="value">{{ overview.team_games.PHX }}</div><div class="label">jogos do Phoenix Suns</div></div>
+  </div>
+  <p>Período coberto: <strong>{{ overview.date_min }}</strong> a <strong>{{ overview.date_max }}</strong>. Cada linha
+    registra as estatísticas de <em>um time em uma partida</em> — a unidade de análise não é um cliente, vendedor ou
+    jogador, mas o desempenho coletivo de uma equipe num jogo. Os times do grupo são {{ m.team_chip("NYK") }} e
+    {{ m.team_chip("PHX") }}.</p>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <h2>Resumo rápido: média por jogo</h2>
+    <span class="section-tag">Variáveis do enunciado</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th>Variável</th><th>Unidade</th>
+          {% for code in TEAM_CODES %}<th class="num">Média {{ TEAMS[code].short }}</th><th class="num">Mediana {{ TEAMS[code].short }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for key in VARIABLE_KEYS %}
+          <tr>
+            <td><strong>{{ VARIABLES[key].label }}</strong> ({{ VARIABLES[key].abbr }})</td>
+            <td>{{ VARIABLES[key].unit }}</td>
+            {% for code in TEAM_CODES %}
+              <td class="num">{{ summary[key][code].describe.mean|num }}</td>
+              <td class="num">{{ summary[key][code].describe.median|num }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">Detalhes, dispersão, outliers e gráficos na seção <a href="{{ url_for('main.descriptive') }}">4.1</a>.</p>
+</section>
+
+<section class="section">
+  <h2>Roteiro do relatório</h2>
+  <div class="cards">
+    <div class="card">
+      <h3>1–2 · Base de dados</h3>
+      <p>Linhas, colunas, tipos, tamanho, tratamento da data, renomeação, conversão de categóricas e colunas
+        excluídas para modelos de aprendizado de máquina; dicionário completo.</p>
+      <a class="more" href="{{ url_for('main.dataset') }}">Abrir →</a>
+    </div>
+    <div class="card">
+      <h3>3 · Qualidade dos dados</h3>
+      <p>Zeros, negativos, duplicados, valores fora de domínio, 20+ regras de consistência, valores ausentes
+        (MCAR/MAR/MNAR e testes) e detecção de outliers com seis métodos.</p>
+      <a class="more" href="{{ url_for('main.special') }}">Abrir →</a>
+    </div>
+    <div class="card">
+      <h3>4 · Estatística descritiva</h3>
+      <p>Tendência central, dispersão, quartis, boxplot completo, barras comparativas com z-score, assimetria,
+        coeficiente de variação e IQR para os dois times.</p>
+      <a class="more" href="{{ url_for('main.descriptive') }}">Abrir →</a>
+    </div>
+    <div class="card">
+      <h3>5 · Síntese</h3>
+      <p>Conclusões, perfis dos times, decisões metodológicas justificadas e limitações da análise.</p>
+      <a class="more" href="{{ url_for('main.synthesis') }}">Abrir →</a>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Como usar</h2>
+  <ul class="tight">
+    <li>Nas seções de análise, a barra de controles no topo permite escolher o <strong>time</strong>, a
+      <strong>variável</strong> ou o <strong>escopo</strong>; tabelas, gráficos e textos são recalculados na hora.</li>
+    <li>Os gráficos são interativos: passe o mouse para ver valores, clique na legenda para ocultar séries e use o
+      ícone de câmera para baixar a imagem.</li>
+    <li>Os blocos <em>"Teoria"</em> podem ser expandidos para ver fórmulas e a justificativa dos métodos.</li>
+  </ul>
+</section>
+{% endblock %}

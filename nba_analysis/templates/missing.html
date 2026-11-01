@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Valores ausentes{% endblock %}
+{% macro decision_badge(reject) -%}
+  {% if reject %}<span class="badge badge-warn">Rejeita MCAR</span>{% else %}<span class="badge badge-ok">Não rejeita MCAR</span>{% endif %}
+{%- endmacro %}
+{% block content %}
+{{ m.page_header("3.2", "Valores ausentes: mecanismos MCAR, MAR e MNAR",
+   "Quantidade de campos ausentes por coluna, teoria dos mecanismos de ausência e dos testes de Little,
+   Jamshidian-Jalal, Listing-Schlittgen e regressão logística de Fairclough — com um laboratório de simulação,
+   já que a base original não tem ausências.") }}
+
+<section class="section">
+  <div class="section-head">
+    <h2>Campos ausentes por coluna</h2>
+    <span class="section-tag">Total: {{ total_missing|int }} ausentes · {{ patterns }} padrão de ausência</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Coluna</th><th class="num">Ausentes (NaN)</th><th class="num">% ausente</th><th class="num">Textos vazios / "NA"</th><th>Situação</th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td><code>{{ row.column }}</code></td>
+            <td class="num zero">{{ row.missing|int }}</td>
+            <td class="num zero">{{ row.pct|pct }}</td>
+            <td class="num zero">{{ row.blank|int }}</td>
+            <td>{{ m.status(row.missing == 0 and row.blank == 0, "Completa", "Com ausentes") }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="interpretation">
+    <h3>Interpretação</h3>
+    <p>Nenhuma coluna tem valores ausentes — nem <code>NaN</code>, nem marcadores disfarçados como texto vazio, "NA" ou "-".
+      Também não há zeros ocupando o lugar de ausentes (seção 3.1 mostra que os zeros são legítimos). Com um único padrão
+      de ausência (todas as linhas completas), <strong>não há mecanismo de ausência a investigar na base real</strong>,
+      e nenhuma imputação ou exclusão de linhas foi necessária.</p>
+    <p>Mesmo assim, o enunciado pede a teoria e o uso dos testes. Abaixo eles são explicados e, em seguida, aplicados num
+      <a href="#laboratorio">laboratório de simulação</a> em que ausências são inseridas artificialmente com um mecanismo
+      conhecido — a melhor forma de mostrar como e por que cada teste funciona.</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Os três mecanismos</h2><span class="section-tag">Rubin (1976)</span></div>
+  <p>Seja <em>R</em> o indicador de ausência (1 se o valor falta) e <em>Y</em> = (<em>Y</em><sub>obs</sub>, <em>Y</em><sub>aus</sub>) os dados.
+    O mecanismo descreve do que depende a probabilidade de faltar:</p>
+  <div class="cards">
+    <div class="card">
+      <h3>MCAR — completamente aleatória</h3>
+      <div class="formula">P(R | Y<sub>obs</sub>, Y<sub>aus</sub>) = P(R)</div>
+      <p>A ausência não depende de nada. Ex.: o operador da planilha perde, por falha do sistema, os pontos de jogos
+        sorteados ao acaso. Os casos completos são uma amostra aleatória: excluir linhas só reduz o tamanho da amostra,
+        sem viés.</p>
+    </div>
+    <div class="card">
+      <h3>MAR — aleatória condicional</h3>
+      <div class="formula">P(R | Y<sub>obs</sub>, Y<sub>aus</sub>) = P(R | Y<sub>obs</sub>)</div>
+      <p>A ausência depende de variáveis <em>observadas</em>. Ex.: os pontos faltam com mais frequência em jogos com muitas
+        assistências (registradas por outra fonte). Excluir linhas gera viés, mas imputação múltipla ou máxima verossimilhança
+        condicionadas às variáveis observadas corrigem.</p>
+    </div>
+    <div class="card">
+      <h3>MNAR — não aleatória</h3>
+      <div class="formula">P(R | Y<sub>obs</sub>, Y<sub>aus</sub>) depende de Y<sub>aus</sub></div>
+      <p>A ausência depende do <em>próprio valor que falta</em>. Ex.: placares muito altos não são registrados porque
+        estouram o campo do formulário. É o caso mais grave: não pode ser identificado só com os dados observados e exige
+        modelos de seleção, análise de sensibilidade ou informação externa.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Os testes: como e por que usar</h2><span class="section-tag">Teoria</span></div>
+  <p>Todos testam a hipótese nula H<sub>0</sub>: <strong>os dados são MCAR</strong>. Rejeitar H<sub>0</sub> indica MAR ou MNAR; não rejeitar
+    é compatível com MCAR (mas não prova). Nenhum teste distingue MAR de MNAR, pois o valor ausente nunca é observado.</p>
+
+  <details class="theory" open>
+    <summary>Teste de Little (Little's MCAR test, 1988)</summary>
+    <div>
+      <p><strong>Ideia:</strong> se os dados são MCAR, a média das variáveis observadas em cada <em>padrão de ausência</em> deve ser
+        igual à média global. Estimam-se a média μ e a covariância Σ globais pelo algoritmo EM (normal multivariada) e
+        compara-se cada padrão <em>j</em> (com n<sub>j</sub> linhas e variáveis observadas o<sub>j</sub>):</p>
+      <div class="formula">d² = Σ<sub>j</sub> n<sub>j</sub> (ȳ<sub>j</sub> − μ̂<sub>o<sub>j</sub></sub>)ᵀ Σ̂<sub>o<sub>j</sub></sub><sup>−1</sup> (ȳ<sub>j</sub> − μ̂<sub>o<sub>j</sub></sub>) &nbsp;~&nbsp; χ²(Σ<sub>j</sub> p<sub>j</sub> − p)</div>
+      <p><strong>Quando usar:</strong> é o teste global padrão, rápido e com uma única estatística. <strong>Limitações:</strong> supõe
+        normalidade multivariada, detecta apenas diferenças de <em>média</em> (não de variância) e tem pouco poder com
+        poucos casos por padrão.</p>
+    </div>
+  </details>
+  <details class="theory">
+    <summary>Teste de Jamshidian e Jalal (2010)</summary>
+    <div>
+      <p><strong>Ideia:</strong> sob MCAR, além das médias, as <em>covariâncias</em> devem ser iguais entre os padrões de ausência.
+        Procedimento implementado: (1) estimar μ e Σ pelo EM; (2) imputar os ausentes a partir da distribuição normal
+        condicional; (3) aplicar o teste de Hawkins de homogeneidade de covariâncias, que transforma cada caso numa
+        estatística F com probabilidade de cauda A<sub>ij</sub> ~ U(0,1) sob H<sub>0</sub> e testa a uniformidade (teste suave de
+        Neyman, combinado entre grupos por Fisher); (4) se Hawkins rejeitar, aplicar o teste não paramétrico k-amostral de
+        Anderson-Darling aos A<sub>ij</sub> dos grupos.</p>
+      <p><strong>Leitura:</strong> Hawkins não rejeita → não rejeita MCAR. Hawkins rejeita e o não paramétrico também → rejeita MCAR
+        (heterogeneidade de covariâncias). Hawkins rejeita mas o não paramétrico não → a causa provável é <em>falta de
+        normalidade</em>, não violação de MCAR. <strong>Por que usar:</strong> complementa Little ao olhar covariâncias e não
+        depende da normalidade para concluir.</p>
+    </div>
+  </details>
+  <details class="theory">
+    <summary>Teste de Listing e Schlittgen (LS)</summary>
+    <div>
+      <p><strong>Ideia:</strong> teste <em>não paramétrico</em> originalmente proposto para abandono (dropout) em estudos longitudinais:
+        compara a distribuição dos valores observados entre quem tem e quem não tem dados faltantes usando o teste de
+        Wilcoxon-Mann-Whitney. Na versão transversal aqui implementada, para cada variável com ausências, dividem-se as
+        linhas em "ausente" e "observado" e compara-se cada outra variável entre os dois grupos; os valores-p são
+        corrigidos por Bonferroni e o teste global rejeita se a menor diferença ajustada for significativa.</p>
+      <p><strong>Por que usar:</strong> não supõe normalidade (baseia-se em postos), é robusto a outliers e aponta <em>qual</em>
+        variável está associada à ausência.</p>
+    </div>
+  </details>
+  <details class="theory">
+    <summary>Regressão logística de Fairclough</summary>
+    <div>
+      <p><strong>Ideia:</strong> modelar diretamente a probabilidade de ausência. Para cada variável com ausências, ajusta-se</p>
+      <div class="formula">logit P(R<sub>k</sub> = 1) = β<sub>0</sub> + β<sub>1</sub>X<sub>1</sub> + … + β<sub>q</sub>X<sub>q</sub></div>
+      <p>com as demais variáveis observadas (padronizadas) como preditoras. O teste da razão de verossimilhança compara com o
+        modelo só com intercepto; coeficientes significativos indicam que a ausência depende de dados observados (evidência
+        de MAR contra MCAR) e mostram a direção (razão de chances). <strong>Por que usar:</strong> é interpretável e indica quais
+        variáveis devem entrar num modelo de imputação.</p>
+    </div>
+  </details>
+
+  <div class="callout warn"><strong>Aplicação na base real:</strong>
+    Little — {{ 'aplicável' if real.little.applicable else 'não aplicável' }};
+    Jamshidian-Jalal — {{ 'aplicável' if real.jamshidian_jalal.applicable else 'não aplicável' }};
+    Listing-Schlittgen — {{ 'aplicável' if real.listing_schlittgen.applicable else 'não aplicável' }};
+    Fairclough — {{ 'aplicável' if real.fairclough.applicable else 'não aplicável' }}.
+    Todos exigem pelo menos dois padrões de ausência (ou um indicador R com zeros e uns), e a base tem um só.</div>
+</section>
+
+<section class="section" id="laboratorio">
+  <div class="section-head"><h2>Laboratório: ausências simuladas com mecanismo conhecido</h2><span class="section-tag">Interativo</span></div>
+  <p>Partindo das sete variáveis do enunciado para os {{ sim.n|int }} registros da liga, apagamos uma fração dos valores de uma
+    variável-alvo segundo o mecanismo escolhido e rodamos os quatro testes. No MAR, a chance de faltar cresce com a
+    variável motivadora; no MNAR, com o próprio valor apagado (peso ∝ e<sup>1,5·z</sup>).</p>
+  <form class="controls" method="get" action="#laboratorio">
+    <label>Mecanismo
+      <select name="mechanism">
+        {% for key, text in mechanisms.items() %}<option value="{{ key }}" {{ 'selected' if key == mechanism }}>{{ text }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Variável com ausências
+      <select name="target">{{ m.variable_options(target) }}</select>
+    </label>
+    <label>Variável motivadora (MAR)
+      <select name="driver" {{ 'disabled' if mechanism != 'MAR' }}>
+        {% for key in driver_options %}<option value="{{ key }}" {{ 'selected' if key == driver }}>{{ VARIABLES[key].label }}</option>{% endfor %}
+      </select>
+    </label>
+    {% if mechanism != 'MAR' %}<input type="hidden" name="driver" value="{{ driver }}">{% endif %}
+    <label>Taxa de ausência
+      <select name="rate">
+        {% for r in rates %}<option value="{{ r }}" {{ 'selected' if r == rate }}>{{ (r * 100)|int }}%</option>{% endfor %}
+      </select>
+    </label>
+    <label>Semente aleatória
+      <input type="number" name="seed" min="0" max="10000" value="{{ seed }}">
+    </label>
+    <button type="submit" class="button">Simular</button>
+  </form>
+
+  <div class="kpis">
+    <div class="kpi"><div class="value">{{ sim.n_missing|int }}</div><div class="label">valores apagados em {{ VARIABLES[target].label }}</div></div>
+    <div class="kpi"><div class="value">{{ sim.true_mean|num }}</div><div class="label">média verdadeira</div></div>
+    <div class="kpi"><div class="value">{{ sim.observed_mean|num }}</div><div class="label">média só dos casos completos</div></div>
+    <div class="kpi"><div class="value">{{ (sim.observed_mean - sim.true_mean)|signed }}</div><div class="label">viés da exclusão de linhas</div></div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data">
+      <caption>Resultado dos testes (α = {{ alpha|num }})</caption>
+      <thead><tr><th>Teste</th><th>Estatística</th><th class="num">Valor-p</th><th>Decisão</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Little</strong></td>
+          <td>d² = {{ sim.little.statistic|num }} (gl = {{ sim.little.df }}, {{ sim.little.patterns }} padrões)</td>
+          <td class="num">{{ sim.little.p_value|pval }}</td>
+          <td>{{ decision_badge(sim.little.p_value <= alpha) }}</td>
+        </tr>
+        <tr>
+          <td><strong>Jamshidian-Jalal</strong></td>
+          <td>Hawkins: χ² = {{ sim.jamshidian_jalal.hawkins_statistic|num }} (p = {{ sim.jamshidian_jalal.hawkins_p|pval }});
+            Anderson-Darling: {{ sim.jamshidian_jalal.ad_statistic|num }} (p = {{ sim.jamshidian_jalal.nonparametric_p|pval }}{{ '*' if sim.jamshidian_jalal.nonparametric_p in (0.001, 0.25) }})</td>
+          <td class="num">{{ sim.jamshidian_jalal.hawkins_p|pval }}</td>
+          <td>{{ decision_badge(sim.jamshidian_jalal.reject) }}<br><span class="table-note">{{ sim.jamshidian_jalal.decision }}</span></td>
+        </tr>
+        <tr>
+          <td><strong>Listing-Schlittgen</strong></td>
+          <td>{{ sim.listing_schlittgen.comparisons|length }} comparações de Mann-Whitney (Bonferroni)</td>
+          <td class="num">{{ sim.listing_schlittgen.global_p|pval }}</td>
+          <td>{{ decision_badge(sim.listing_schlittgen.reject) }}</td>
+        </tr>
+        {% set model = sim.fairclough.models[0] %}
+        <tr>
+          <td><strong>Regressão logística (Fairclough)</strong></td>
+          <td>Razão de verossimilhança = {{ model.lr_statistic|num }} (gl = {{ model.lr_df }})</td>
+          <td class="num">{{ model.lr_p|pval }}</td>
+          <td>{{ decision_badge(model.reject) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">* O valor-p do Anderson-Darling k-amostral do SciPy é interpolado e limitado ao intervalo [0,001; 0,25].</p>
+
+  <div class="grid-2">
+    <div class="table-wrap">
+      <table class="data">
+        <caption>Listing-Schlittgen: {{ VARIABLES[target].label }} ausente × observado</caption>
+        <thead><tr><th>Variável comparada</th><th class="num">Mediana (ausente)</th><th class="num">Mediana (observado)</th><th class="num">p ajustado</th></tr></thead>
+        <tbody>
+          {% for c in sim.listing_schlittgen.comparisons %}
+            <tr class="{{ 'highlight' if c.p_adjusted <= alpha }}"><td>{{ VARIABLES[c.compared].label }}</td><td class="num">{{ c.median_missing|num }}</td><td class="num">{{ c.median_observed|num }}</td><td class="num">{{ c.p_adjusted|pval }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap">
+      <table class="data">
+        <caption>Fairclough: preditores da ausência (coeficientes padronizados)</caption>
+        <thead><tr><th>Preditor</th><th class="num">β</th><th class="num">Razão de chances</th><th class="num">Valor-p</th></tr></thead>
+        <tbody>
+          {% for t in model.terms %}
+            <tr class="{{ 'highlight' if t.p_value <= alpha }}"><td>{{ VARIABLES[t.name].label }}</td><td class="num">{{ t.coefficient|signed }}</td><td class="num">{{ t.odds_ratio|num }}</td><td class="num">{{ t.p_value|pval }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {{ m.chart("chart-missing", sim_chart, "À esquerda, a variável motivadora (observável); à direita, os valores reais de " ~ VARIABLES[target].label|lower ~ " que foram apagados, algo que só a simulação permite ver.") }}
+
+  <div class="interpretation">
+    <h3>Interpretação</h3>
+    <p><strong>Nesta simulação</strong>, rejeitaram MCAR: {{ rejected|join(", ") if rejected else "nenhum teste" }};
+      não rejeitaram: {{ not_rejected|join(", ") if not_rejected else "nenhum" }}.
+      {% if logistic_rejects and significant_predictors %}A regressão logística aponta como preditores significativos da ausência:
+      {% for v in significant_predictors %}{{ VARIABLES[v].label|lower }}{{ ", " if not loop.last }}{% endfor %}.
+      {% elif significant_predictors %}O teste global da regressão logística não rejeitou; o coeficiente isolado com p ≤ 0,05
+      ({% for v in significant_predictors %}{{ VARIABLES[v].label|lower }}{{ ", " if not loop.last }}{% endfor %}) é compatível com um
+      falso positivo, pois são testados 6 preditores ao mesmo tempo.
+      {% else %}Nenhum preditor foi significativo na regressão logística.{% endif %}</p>
+    {% if mechanism == 'MCAR' %}
+      <p>Com MCAR, as linhas apagadas são um sorteio: as distribuições das linhas ausentes e observadas se sobrepõem, a média dos
+        casos completos ({{ sim.observed_mean|num }}) praticamente coincide com a verdadeira ({{ sim.true_mean|num }}) e o esperado é que
+        os testes <strong>não rejeitem</strong> H<sub>0</sub>. Uma rejeição eventual é um falso positivo (≈ 5% das sementes) — ou, no caso de
+        Hawkins, efeito da não normalidade das contagens, que o passo não paramétrico de Jamshidian-Jalal corrige.</p>
+    {% elif mechanism == 'MAR' %}
+      <p>Com MAR, as ausências se concentram nos jogos com valores altos de {{ VARIABLES[driver].label|lower }}. Como essa variável é
+        observada, os testes que comparam os grupos ou modelam a ausência (Little, Listing-Schlittgen e a regressão logística) tendem a
+        detectar a dependência, e a regressão identifica {{ VARIABLES[driver].label|lower }} como motivadora. Jamshidian-Jalal olha
+        covariâncias, não médias, e por isso pode não rejeitar mesmo quando as médias diferem. Excluir linhas desloca a média em
+        {{ (sim.observed_mean - sim.true_mean)|signed }} {{ VARIABLES[target].unit }}, porque as variáveis são correlacionadas; a solução
+        adequada é imputar condicionando em {{ VARIABLES[driver].label|lower }} (imputação múltipla ou EM).</p>
+    {% else %}
+      <p>Com MNAR, apagamos preferencialmente os valores altos de {{ VARIABLES[target].label|lower }} (gráfico à direita). Os testes
+        só conseguem rejeitar MCAR <em>indiretamente</em>, porque {{ VARIABLES[target].label|lower }} é correlacionado com outras
+        variáveis observadas; eles não conseguem afirmar que o mecanismo é MNAR em vez de MAR. Isso ilustra a principal limitação:
+        <strong>MNAR não é testável apenas com os dados observados</strong>. A média dos casos completos fica viesada em
+        {{ (sim.observed_mean - sim.true_mean)|signed }} {{ VARIABLES[target].unit }} e nem a imputação MAR corrige totalmente.</p>
+    {% endif %}
+    <p>Experimente aumentar a taxa de ausência ou trocar a variável motivadora: o poder dos testes cresce com o número de
+      ausentes e com a correlação entre a variável motivadora e as demais.</p>
+  </div>
+</section>
+{% endblock %}

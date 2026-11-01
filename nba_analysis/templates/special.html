@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Valores especiais e consistência{% endblock %}
+{% block content %}
+{{ m.page_header("3.1", "Valores especiais e regras de consistência",
+   "Verificação de zeros, negativos, duplicados e valores fora de domínio (o equivalente a \"idade = 999\") e de
+   regras de negócio que as estatísticas de basquete precisam obedecer.") }}
+
+<section class="section">
+  <div class="section-head"><h2>Duplicados</h2><span class="section-tag">Linhas repetidas</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Verificação</th><th class="num">Ocorrências</th><th>Situação</th></tr></thead>
+      <tbody>
+        <tr><td>Linhas inteiramente duplicadas</td><td class="num">{{ duplicates.full_rows|int }}</td><td>{{ m.status(duplicates.full_rows == 0, "Nenhuma") }}</td></tr>
+        <tr><td>Chave (Team_ID, Game_ID) repetida — o mesmo time registrado duas vezes no mesmo jogo</td><td class="num">{{ duplicates.team_game_key|int }}</td><td>{{ m.status(duplicates.team_game_key == 0, "Nenhuma") }}</td></tr>
+        <tr><td>Mesmas estatísticas, data e confronto com IDs diferentes (duplicata "disfarçada")</td><td class="num">{{ duplicates.stats_without_ids|int }}</td><td>{{ m.status(duplicates.stats_without_ids == 0, "Nenhuma") }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">Atenção: o fato de cada <code>Game_ID</code> aparecer duas vezes <em>não</em> é duplicação — são os dois times da partida.</p>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Zeros, negativos e valores fora de domínio</h2><span class="section-tag">Por coluna</span></div>
+  <p>O domínio plausível de cada coluna foi definido a partir das regras do basquete (por exemplo: percentuais entre
+    0 e 1; minutos entre 240 e 390, isto é, até 6 prorrogações; pontos entre 0 e 200 — o recorde da NBA é 186).</p>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Coluna</th><th>Rótulo</th><th class="num">Zeros</th><th class="num">% zeros</th><th class="num">Negativos</th><th>Domínio plausível</th><th class="num">Fora do domínio</th><th>Interpretação dos zeros</th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td><code>{{ row.column }}</code></td>
+            <td>{{ row.label }}</td>
+            <td class="num {{ 'zero' if row.zeros == 0 }}">{{ row.zeros|int }}</td>
+            <td class="num {{ 'zero' if row.zeros == 0 }}">{{ row.zeros_pct|pct }}</td>
+            <td class="num {{ 'zero' if row.negatives == 0 else 'hit' }}">{{ row.negatives|int }}</td>
+            <td>[{{ row.domain[0] }}; {{ row.domain[1] }}]</td>
+            <td class="num {{ 'zero' if row.out_of_domain == 0 else 'hit' }}">{{ row.out_of_domain|int }}</td>
+            <td>{{ row.interpretation }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <h2>Regras de consistência</h2>
+    <span class="section-tag">{{ n_rules_ok }} de {{ rules|length }} regras sem violação</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Regra</th><th>O que verifica</th><th class="num">Violações</th><th class="num">Registros avaliados</th><th>Situação</th></tr></thead>
+      <tbody>
+        {% for rule in rules %}
+          <tr>
+            <td><strong>{{ rule.name }}</strong></td>
+            <td>{{ rule.description }}</td>
+            <td class="num {{ 'zero' if rule.ok else 'hit' }}">{{ rule.violations|int }}</td>
+            <td class="num">{{ rule.total|int }}</td>
+            <td>{{ m.status(rule.ok, "Coerente", "Inconsistente") }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">Percentuais da fonte são arredondados a 3 casas; por isso a comparação com a razão exata usa tolerância de 0,0005.</p>
+
+  <div class="interpretation">
+    <h3>Interpretação</h3>
+    <p>A base é <strong>internamente consistente</strong>: nenhuma linha duplicada, nenhum valor negativo ou fora de domínio, e
+      {{ n_rules_ok }} de {{ rules|length }} regras sem violação. As identidades aritméticas (pontos, rebotes e percentuais) fecham
+      linha a linha, as duas linhas de cada partida se espelham (mesma data, mesma duração, um vencedor, mandos opostos)
+      e os registros acumulados (W, L, W_PCT) evoluem jogo a jogo de forma coerente com o resultado.</p>
+    <p>Os únicos valores especiais são <strong>zeros legítimos</strong>: derrotas codificadas como 0, times sem vitórias ou
+      derrotas no começo da temporada, {{ rows|selectattr("column", "equalto", "blocks")|map(attribute="zeros")|first }} jogos
+      sem tocos e {{ rows|selectattr("column", "equalto", "steals")|map(attribute="zeros")|first }} jogo sem roubos de bola —
+      eventos raros, mas possíveis. Nenhum deles deve ser tratado como ausente ou erro. O nome do arquivo
+      (<code>_final</code>) sugere que a base já passou por limpeza, o que estas verificações confirmam.</p>
+  </div>
+</section>
+{% endblock %}

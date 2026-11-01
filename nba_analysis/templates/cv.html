@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Coeficiente de variação{% endblock %}
+{% block content %}
+{{ m.page_header("4.3", "Coeficiente de variação (CV)",
+   "Dispersão relativa de cada variável para cada time: fórmula, condições de validade, interpretação, comparação
+   entre variáveis e times, e confronto com o desvio padrão e a assimetria.") }}
+
+<form class="controls" method="get">
+  <label>Variável em detalhe
+    <select name="variable">{{ m.variable_options(variable) }}</select>
+  </label>
+  {{ m.submit_fallback() }}
+</form>
+
+<section class="section">
+  <div class="section-head"><h2>Fórmula e convenção</h2><span class="section-tag">Metodologia</span></div>
+  <div class="formula">CV = (s / x̄) × 100%, &nbsp; s = √( Σ (x<sub>i</sub> − x̄)² / (n − 1) )</div>
+  <p>O desvio padrão é <strong>amostral</strong> (n − 1), a mesma convenção das medidas da seção 4.1, e o resultado é apresentado em
+    <strong>percentual</strong> com 2 casas decimais. Faixas de leitura adotadas: CV &lt; 15% baixa dispersão; 15% a 30% moderada; &gt; 30% alta.
+    Alternativas robustas apresentadas para comparação: <strong>CV robusto</strong> = 1,4826 × MAD / mediana × 100% (o fator 1,4826 torna o MAD
+    comparável ao desvio padrão sob normalidade) e <strong>IQR / mediana</strong> × 100%.</p>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Detalhe — {{ VARIABLES[variable].label }}</h2><span class="section-tag">Validade e interpretação</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Verificação</th>{% for code in TEAM_CODES %}<th>{{ TEAMS[code].name }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        <tr><td>Escala de razão (zero absoluto)?</td>{% for code in TEAM_CODES %}<td>{{ m.status(summary[variable][code].cv.ratio_scale, "Sim — contagem") }}</td>{% endfor %}</tr>
+        <tr><td>Média positiva?</td>{% for code in TEAM_CODES %}<td>{{ m.status(summary[variable][code].cv.mean_positive, "Sim: " ~ (summary[variable][code].cv.mean|num)) }}</td>{% endfor %}</tr>
+        <tr><td>Média suficientemente distante de zero (≥ {{ 10 }})?</td>{% for code in TEAM_CODES %}<td>{{ m.status(not summary[variable][code].cv.small_mean, "Sim", "Não — CV inflado") }}</td>{% endfor %}</tr>
+        <tr><td>Média / desvio padrão</td>{% for code in TEAM_CODES %}<td>{{ summary[variable][code].cv.mean_over_std|num }}</td>{% endfor %}</tr>
+        <tr><td>Jogos com valor zero</td>{% for code in TEAM_CODES %}<td>{{ summary[variable][code].cv.zeros|int }}</td>{% endfor %}</tr>
+        <tr><td><strong>CV observado</strong></td>{% for code in TEAM_CODES %}<td><strong>{{ summary[variable][code].cv.cv|pct }}</strong> ({{ classify(summary[variable][code].cv.cv) }})</td>{% endfor %}</tr>
+        <tr><td>CV esperado sob Poisson (100 / √média)</td>{% for code in TEAM_CODES %}<td>{{ summary[variable][code].cv.cv_poisson|pct }}</td>{% endfor %}</tr>
+        <tr><td>Índice de dispersão (variância / média)</td>{% for code in TEAM_CODES %}<td>{{ summary[variable][code].cv.dispersion_index|num }}</td>{% endfor %}</tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="interpretation">
+    <h3>Interpretação — {{ VARIABLES[variable].label }}</h3>
+    {{ m.paragraphs(variable_texts) }}
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Quadro-resumo do CV</h2><span class="section-tag">Linhas = variáveis · colunas = times</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th rowspan="2">Variável</th>
+          {% for code in TEAM_CODES %}<th colspan="5" style="text-align:center">{{ TEAMS[code].name }}</th>{% endfor %}
+        </tr>
+        <tr>
+          {% for code in TEAM_CODES %}<th class="num">Média</th><th class="num">Desvio padrão</th><th class="num">CV</th><th class="num">CV robusto</th><th class="num">IQR / mediana</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for key in VARIABLE_KEYS %}
+          {% set a = summary[key][TEAM_CODES[0]].cv.cv %}{% set b = summary[key][TEAM_CODES[1]].cv.cv %}
+          <tr class="{{ 'highlight' if key == variable }}">
+            <td><a href="?variable={{ key }}">{{ VARIABLES[key].label }}</a></td>
+            {% for code in TEAM_CODES %}
+              {% set c = summary[key][code].cv %}
+              <td class="num">{{ c.mean|num }}</td>
+              <td class="num">{{ c.std|num }}</td>
+              <td class="num"><strong>{{ c.cv|pct }}</strong>{{ ' ✓' if c.cv == [a, b]|min }}</td>
+              <td class="num">{{ c.cv_mad|pct }}</td>
+              <td class="num">{{ c.cv_iqr|pct }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">✓ = time mais consistente (menor CV) naquela variável. Média e desvio padrão nas unidades de cada variável (por jogo).</p>
+  {{ m.chart("chart-cv", chart, "Barras = CV observado; traço preto = CV esperado se a estatística fosse uma contagem de Poisson com a mesma média.") }}
+  <div class="interpretation">
+    <h3>Interpretação geral</h3>
+    {{ m.paragraphs(overview_texts) }}
+  </div>
+</section>
+{% endblock %}

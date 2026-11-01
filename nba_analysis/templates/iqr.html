@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Intervalo interquartil{% endblock %}
+{% block content %}
+{{ m.page_header("4.4", "Intervalo interquartil (IQR)",
+   "IQR = Q3 − Q1 por variável e por time: interpretação, comparação com amplitude e desvio padrão, justificativa
+   da regra de outliers e comparação entre os times.") }}
+
+<form class="controls" method="get">
+  <label>Variável em detalhe
+    <select name="variable">{{ m.variable_options(variable) }}</select>
+  </label>
+  {{ m.submit_fallback() }}
+</form>
+
+<section class="section">
+  <div class="section-head"><h2>Método de cálculo dos quartis</h2><span class="section-tag">Consistência</span></div>
+  <p>Quartis por <strong>interpolação linear</strong> (tipo 7 de Hyndman e Fan, padrão de <code>numpy.percentile</code> e
+    <code>pandas.quantile</code>): a posição do quantil p é h = (n − 1)·p + 1 na amostra ordenada, interpolando entre os vizinhos
+    quando h não é inteiro.</p>
+  <div class="formula">Q<sub>p</sub> = x<sub>(⌊h⌋)</sub> + (h − ⌊h⌋)·(x<sub>(⌊h⌋+1)</sub> − x<sub>(⌊h⌋)</sub>), &nbsp; IQR = Q3 − Q1</div>
+  <p>É exatamente o mesmo método usado nos quartis da seção 4.1 e no boxplot (os valores de Q1, Q3 e limites são calculados em Python e
+    passados prontos ao gráfico, sem que a biblioteca de gráficos recalcule nada). Métodos alternativos, como o de Tukey (<em>hinges</em>) ou o
+    de Moore e McCabe, podem diferir em até meia unidade nestas amostras de contagens inteiras.</p>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Detalhe — {{ VARIABLES[variable].label }}</h2><span class="section-tag">{{ VARIABLES[variable].unit }}</span></div>
+  {{ m.chart("chart-dispersion", dispersion_chart) }}
+  <div class="interpretation">
+    <h3>Interpretação — {{ VARIABLES[variable].label }}</h3>
+    {{ m.paragraphs(variable_texts) }}
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Q1, Q3 e IQR lado a lado</h2><span class="section-tag">De onde vem o IQR</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th rowspan="2">Variável</th>{% for code in TEAM_CODES %}<th colspan="6" style="text-align:center">{{ TEAMS[code].name }}</th>{% endfor %}</tr>
+        <tr>{% for code in TEAM_CODES %}<th class="num">Q1</th><th class="num">Q3</th><th class="num">IQR</th><th class="num">Amplitude</th><th class="num">Desvio padrão</th><th class="num">Amplitude / IQR</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for key in VARIABLE_KEYS %}
+          <tr class="{{ 'highlight' if key == variable }}">
+            <td><a href="?variable={{ key }}">{{ VARIABLES[key].label }}</a></td>
+            {% for code in TEAM_CODES %}
+              {% set q = summary[key][code].iqr %}
+              <td class="num">{{ q.q1|num }}</td><td class="num">{{ q.q3|num }}</td><td class="num"><strong>{{ q.iqr|num }}</strong></td>
+              <td class="num">{{ q.range|num }}</td><td class="num">{{ q.std|num }}</td><td class="num">{{ q.range_over_iqr|num }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ m.chart("chart-ratio", ratio_chart) }}
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Robustez: o que acontece ao retirar os outliers</h2><span class="section-tag">Desvio padrão × IQR</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th rowspan="2">Variável</th>{% for code in TEAM_CODES %}<th colspan="5" style="text-align:center">{{ TEAMS[code].name }}</th>{% endfor %}</tr>
+        <tr>{% for code in TEAM_CODES %}<th class="num">s (todos)</th><th class="num">s (sem outliers)</th><th class="num">Variação de s</th><th class="num">IQR (sem outliers)</th><th class="num">Variação do IQR</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for key in VARIABLE_KEYS %}
+          <tr class="{{ 'highlight' if key == variable }}">
+            <td>{{ VARIABLES[key].label }}</td>
+            {% for code in TEAM_CODES %}
+              {% set q = summary[key][code].iqr %}
+              <td class="num">{{ q.std|num }}</td><td class="num">{{ q.std_without_outliers|num }}</td>
+              <td class="num {{ 'hit' if q.std_change_pct >= 10 }}">{{ (-q.std_change_pct)|pct }}</td>
+              <td class="num">{{ q.iqr_without_outliers|num }}</td><td class="num">{{ (-q.iqr_change_pct)|pct }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">Em destaque, quedas de 10% ou mais no desvio padrão. Sob normalidade, s / IQR ≈ 0,74.</p>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>IQR e a regra de detecção de outliers</h2><span class="section-tag">k = 1,5 × k = 3</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th rowspan="2">Variável</th><th rowspan="2">Time</th><th colspan="3" style="text-align:center">k = 1,5 (adotado)</th><th colspan="3" style="text-align:center">k = 3 (extremos)</th><th rowspan="2">Coincide com o boxplot?</th></tr>
+        <tr><th class="num">LI</th><th class="num">LS</th><th class="num">Outliers</th><th class="num">LI</th><th class="num">LS</th><th class="num">Outliers</th></tr>
+      </thead>
+      <tbody>
+        {% for key in VARIABLE_KEYS %}
+          {% for code in TEAM_CODES %}
+            {% set q = summary[key][code].iqr %}
+            <tr class="{{ 'highlight' if key == variable }}">
+              {% if loop.first %}<td rowspan="{{ TEAM_CODES|length }}">{{ VARIABLES[key].label }}</td>{% endif %}
+              <td>{{ TEAMS[code].short }}</td>
+              <td class="num">{{ q.k15.lower|num }}</td><td class="num">{{ q.k15.upper|num }}</td>
+              <td class="num {{ 'zero' if q.k15.n == 0 }}">{{ q.k15.n }} ({{ q.k15.n_low }} inf. / {{ q.k15.n_high }} sup.)</td>
+              <td class="num">{{ q.k30.lower|num }}</td><td class="num">{{ q.k30.upper|num }}</td>
+              <td class="num {{ 'zero' if q.k30.n == 0 }}">{{ q.k30.n }}</td>
+              <td>{{ m.status(q.matches_boxplot, "Sim", "Não") }}</td>
+            </tr>
+          {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Quadro-resumo do IQR</h2><span class="section-tag">Linhas = variáveis · colunas = times</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Variável</th>{% for code in TEAM_CODES %}<th class="num">IQR {{ TEAMS[code].short }}</th>{% endfor %}<th>Mais concentrado</th><th>Unidade</th></tr></thead>
+      <tbody>
+        {% for key in VARIABLE_KEYS %}
+          {% set a = summary[key][TEAM_CODES[0]].iqr.iqr %}{% set b = summary[key][TEAM_CODES[1]].iqr.iqr %}
+          <tr class="{{ 'highlight' if key == variable }}">
+            <td>{{ VARIABLES[key].label }}</td>
+            <td class="num">{{ a|num }}</td><td class="num">{{ b|num }}</td>
+            <td>{% if a < b %}{{ TEAMS[TEAM_CODES[0]].short }}{% elif b < a %}{{ TEAMS[TEAM_CODES[1]].short }}{% else %}Empate{% endif %}</td>
+            <td>{{ VARIABLES[key].unit }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="interpretation">
+    <h3>Interpretação geral</h3>
+    {{ m.paragraphs(overview_texts) }}
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Estrutura e tratamento da base{% endblock %}
+{% block content %}
+{{ m.page_header("1", "Estrutura e tratamento da base",
+   "Linhas, colunas, tipos de dados, tamanho, tratamento da data, renomeação das colunas, conversão de categóricas
+   em numéricas e escolha das colunas úteis para modelos de aprendizado de máquina.") }}
+
+<section class="section" id="dimensoes">
+  <div class="section-head"><h2>1.1 Linhas, colunas e o que cada linha representa</h2><span class="section-tag">Estrutura</span></div>
+  <div class="kpis">
+    <div class="kpi"><div class="value">{{ overview.rows|int }}</div><div class="label">linhas</div></div>
+    <div class="kpi"><div class="value">{{ overview.columns }}</div><div class="label">colunas originais</div></div>
+    <div class="kpi"><div class="value">{{ (overview.rows * overview.columns)|int }}</div><div class="label">células (linhas × colunas)</div></div>
+    <div class="kpi"><div class="value">{{ overview.games|int }}</div><div class="label">partidas (2 linhas cada)</div></div>
+  </div>
+  <div class="interpretation">
+    <h3>Interpretação</h3>
+    <p>A base não descreve clientes, vendedores ou jogadores: cada linha é o <strong>desempenho coletivo de um time em
+      uma partida</strong> (granularidade <em>time × jogo</em>). Como toda partida envolve dois times, cada
+      <code>Game_ID</code> aparece exatamente duas vezes — {{ overview.games|int }} partidas × 2 = {{ overview.rows|int }} linhas.</p>
+    <p>As {{ overview.columns }} colunas se dividem em quatro grupos: <strong>identificação</strong> (IDs, nome do time,
+      confronto e data), <strong>resultado</strong> (WL), <strong>campanha acumulada</strong> (W, L, W_PCT) e
+      <strong>estatísticas do jogo</strong> (minutos, arremessos, rebotes, assistências, roubos, tocos, erros, faltas e
+      pontos). O significado de cada coluna está no <a href="{{ url_for('main.dictionary') }}">dicionário de dados</a>.
+      Os times têm entre {{ overview.games_per_team_min }} e {{ overview.games_per_team_max }} jogos: a temporada
+      (82 jogos) ainda não havia terminado em {{ overview.date_max }}.</p>
+  </div>
+</section>
+
+<section class="section" id="tipos">
+  <div class="section-head"><h2>1.2 Tipos de dados de cada coluna</h2><span class="section-tag">Para a equipe de desenvolvimento</span></div>
+  <p>O tipo físico (<em>dtype</em> lido pelo pandas) nem sempre coincide com o tipo semântico: <code>Team_ID</code> é
+    lido como inteiro, mas é um identificador nominal; <code>GAME_DATE</code> chega como texto e precisa virar data.
+    Para um gestor esse detalhe é dispensável, mas para quem desenvolve modelos ele define quais operações fazem
+    sentido (média de um ID, por exemplo, não faz).</p>
+  <div class="kpis">
+    {% for kind, count in semantic_counts.items() %}
+      <div class="kpi"><div class="value">{{ count }}</div><div class="label">{{ kind }}</div></div>
+    {% endfor %}
+  </div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Coluna original</th><th>dtype lido</th><th>dtype após tratamento</th><th>Tipo semântico</th><th>Escala de medida</th><th class="num">Valores distintos</th><th>Exemplo (1ª linha)</th></tr></thead>
+      <tbody>
+        {% for row in type_rows %}
+          <tr>
+            <td><code>{{ row.original }}</code></td>
+            <td><code>{{ row.dtype }}</code></td>
+            <td><code>{{ row.dtype_after }}</code></td>
+            <td>{{ row.semantic_type }}</td>
+            <td>{{ row.scale }}</td>
+            <td class="num">{{ row.unique|int }}</td>
+            <td>{{ row.example }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">Binária: dois valores possíveis. Numérica discreta: contagens inteiras. Numérica contínua: proporções.
+    Texto/categórica e nominal: rótulos sem ordem. Data: instante no tempo.</p>
+</section>
+
+<section class="section" id="tamanho">
+  <div class="section-head"><h2>1.3 Tamanho da base</h2><span class="section-tag">Armazenamento</span></div>
+  <div class="kpis">
+    <div class="kpi"><div class="value">{{ file_size|bytes }}</div><div class="label">arquivo CSV em disco</div></div>
+    <div class="kpi"><div class="value">{{ memory_raw|bytes }}</div><div class="label">memória (base original)</div></div>
+    <div class="kpi"><div class="value">{{ memory_treated|bytes }}</div><div class="label">memória (base tratada, {{ log.columns_treated }} colunas)</div></div>
+  </div>
+  <p>É uma base pequena: cabe inteira em memória e todos os cálculos do relatório (inclusive os métodos de detecção
+    de anomalias) rodam em segundos, sem necessidade de amostragem. A base tratada ocupa mais memória porque
+    acrescenta colunas derivadas (sigla, adversário, mando de quadra e atributos de data).</p>
+</section>
+
+<section class="section" id="data">
+  <div class="section-head"><h2>1.4 Tratamento do campo de data</h2><span class="section-tag">GAME_DATE</span></div>
+  <ul class="tight">
+    <li><strong>Antes:</strong> <code>GAME_DATE</code> lido como <code>{{ log.date_dtype_before }}</code> (texto no formato AAAA-MM-DD), o que impede ordenar
+      cronologicamente com segurança, calcular intervalos ou extrair mês/dia da semana.</li>
+    <li><strong>Conversão:</strong> <code>pd.to_datetime(..., format="%Y-%m-%d", errors="coerce")</code> → <code>{{ log.date_dtype_after }}</code>.
+      O formato explícito evita ambiguidade dia/mês e o <code>coerce</code> transforma datas inválidas em ausentes para que sejam contadas:
+      <strong>{{ log.invalid_dates }}</strong> datas inválidas.</li>
+    <li><strong>Validação:</strong> todas as datas estão entre {{ log.date_min|date }} e {{ log.date_max|date }}, dentro da temporada regular,
+      e nenhum time tem dois jogos no mesmo dia.</li>
+    <li><strong>Atributos derivados:</strong> mês, dia da semana, número do jogo na temporada, dias desde o jogo anterior (limitado a 5;
+      o 1º jogo recebe 5 por vir da pré-temporada) e indicador de jogos em dias seguidos (<em>back-to-back</em>:
+      {{ b2b|int }} registros). Para modelos, a data bruta é descartada e esses atributos são usados no lugar.</li>
+  </ul>
+  <form class="controls" method="get" action="#data">
+    <label>Prévia do time
+      <select name="team">
+        {{ m.team_options(team, include_both=False) }}
+        <option value="NBA" {{ 'selected' if team == 'NBA' }}>Liga (primeiras linhas)</option>
+      </select>
+    </label>
+    {{ m.submit_fallback() }}
+  </form>
+  <div class="table-wrap">
+    <table class="data">
+      <caption>Primeiros jogos após o tratamento (colunas derivadas de GAME_DATE, MATCHUP e MIN)</caption>
+      <thead><tr><th>game_date</th><th>matchup</th><th>team</th><th>opponent</th><th class="num">is_home</th><th class="num">win</th><th class="num">game_month</th><th class="num">game_weekday</th><th class="num">game_number</th><th class="num">days_since_previous_game</th><th class="num">is_back_to_back</th><th class="num">overtime_periods</th></tr></thead>
+      <tbody>
+        {% for _, row in derived_preview.iterrows() %}
+          <tr>
+            <td>{{ row.game_date|date }}</td><td>{{ row.matchup }}</td><td>{{ row.team }}</td><td>{{ row.opponent }}</td>
+            <td class="num">{{ row.is_home }}</td><td class="num">{{ row.win }}</td><td class="num">{{ row.game_month }}</td>
+            <td class="num">{{ row.game_weekday }}</td><td class="num">{{ row.game_number }}</td>
+            <td class="num">{{ row.days_since_previous_game }}</td><td class="num">{{ row.is_back_to_back }}</td><td class="num">{{ row.overtime_periods }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ m.chart("chart-month", month_chart, "Distribuição dos registros por mês, só possível após converter o texto em data. Outubro é parcial (início em 21/10) e março vai até 29/03.") }}
+</section>
+
+<section class="section" id="renomeacao">
+  <div class="section-head"><h2>1.5 Novos nomes de colunas</h2><span class="section-tag">Renomeação</span></div>
+  <p>As siglas originais da API da NBA (<code>FG3M</code>, <code>DREB</code>…) são compactas mas pouco intuitivas. Foram adotados nomes
+    descritivos em <em>snake_case</em> (inglês, mesmo idioma do código-fonte), e a interface sempre exibe o rótulo em português ao lado.</p>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Nome original</th><th>Novo nome</th><th>Rótulo em português</th></tr></thead>
+      <tbody>
+        {% for col in columns %}
+          <tr><td><code>{{ col.original }}</code></td><td><code>{{ col.new }}</code></td><td>{{ col.label }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section" id="conversao">
+  <div class="section-head"><h2>1.6 Colunas categóricas convertidas em numéricas</h2><span class="section-tag">W e L</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Coluna</th><th>Situação encontrada</th><th>Tratamento aplicado</th><th>Resultado</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>WL</code> → <code>win</code></td>
+          <td>Na API original o resultado vem como texto <code>"W"</code>/<code>"L"</code>. Neste arquivo os valores distintos são
+            {{ log.wl_values_before|join(", ") }} — já codificados.</td>
+          <td>Função de conversão que aceita os dois formatos: mapeia <code>W → 1</code>, <code>L → 0</code> quando o dado é
+            texto e apenas garante o tipo inteiro quando já é numérico (situação: <em>{{ 'já numérico' if log.wl_conversion == 'numeric' else 'mapeado de texto' }}</em>).</td>
+          <td>Binária 0/1 (<code>int64</code>): 1 = vitória, 0 = derrota.</td>
+        </tr>
+        <tr>
+          <td><code>W</code>, <code>L</code> → <code>season_wins</code>, <code>season_losses</code></td>
+          <td>Contagens acumuladas de vitórias e derrotas (não são categorias).</td>
+          <td>Conversão explícita para inteiro e verificação de coerência com WL (seção 3.1).</td>
+          <td>Numéricas discretas.</td>
+        </tr>
+        <tr>
+          <td><code>MATCHUP</code> → <code>is_home</code>, <code>team</code>, <code>opponent</code></td>
+          <td>Texto como <code>"NYK vs. CLE"</code> (casa) ou <code>"NYK @ BOS"</code> (fora).</td>
+          <td>Expressão regular extrai sigla do time, separador e adversário; <code>vs.</code> → 1 e <code>@</code> → 0.
+            {{ log.unparsed_matchups }} confrontos não reconhecidos.</td>
+          <td><code>is_home</code> binária ({{ home_counts.get(1, 0)|int }} jogos em casa, {{ home_counts.get(0, 0)|int }} fora);
+            <code>team</code>/<code>opponent</code> nominais (usar one-hot em modelos).</td>
+        </tr>
+        <tr>
+          <td><code>MIN</code> → <code>overtime_periods</code></td>
+          <td>Valores 240, 265 e 290: o total de minutos codifica, na prática, o número de prorrogações.</td>
+          <td><code>(MIN − 240) / 25</code>.</td>
+          <td>{% for k, v in overtime.items() %}{% if k == 0 %}sem prorrogação{% elif k == 1 %}1 prorrogação{% else %}{{ k }} prorrogações{% endif %}: {{ v|int }} registros{{ "; " if not loop.last }}{% endfor %}.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section" id="ml">
+  <div class="section-head"><h2>1.7 Colunas excluídas para aprendizado de máquina</h2><span class="section-tag">Seleção de atributos</span></div>
+  <p>Critérios: (1) <strong>identificadores</strong> não generalizam; (2) <strong>vazamento de dados</strong> — W, L e W_PCT já incluem
+    o resultado do próprio jogo; (3) <strong>redundância exata</strong> — REB = OREB + DREB e PTS = 2·FGM + FG3M + FTM geram
+    multicolinearidade perfeita; (4) <strong>texto bruto</strong> substituído por atributos derivados. Na estatística descritiva
+    as colunas de pontos e rebotes continuam sendo usadas — a exclusão vale apenas para o conjunto de modelagem.</p>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Coluna</th><th>Decisão</th><th>Justificativa</th></tr></thead>
+      <tbody>
+        {% for col in columns %}
+          <tr><td><code>{{ col.original }}</code> → <code>{{ col.new }}</code></td><td>{{ m.decision(col.ml) }}</td><td>{{ col.ml_reason }}</td></tr>
+        {% endfor %}
+        {% for col in derived %}
+          <tr><td><em>derivada</em> <code>{{ col.new }}</code></td><td>{{ m.decision(col.ml) }}</td><td>{{ col.ml_reason }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="callout ok">Conjunto pronto para modelagem: <strong>{{ ml_shape[0]|int }} linhas × {{ ml_shape[1] }} colunas</strong>
+    ({{ dropped|length }} originais excluídas, {{ derived|length }} derivadas incluídas, alvo: <code>win</code>).</div>
+</section>
+{% endblock %}

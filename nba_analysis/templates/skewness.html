@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Assimetria{% endblock %}
+{% block content %}
+{{ m.page_header("4.2", "Assimetria (skewness)",
+   "Coeficiente de assimetria por variável e por time, classificação quanto à direção e intensidade,
+   confirmação visual com histograma + KDE + boxplot e implicações práticas.") }}
+
+<form class="controls" method="get">
+  <label>Variável
+    <select name="variable">{{ m.variable_options(variable) }}</select>
+  </label>
+  <label>Time
+    <select name="team">{{ m.team_options(team) }}</select>
+  </label>
+  {{ m.submit_fallback() }}
+</form>
+
+<section class="section">
+  <div class="section-head"><h2>Fórmula adotada e critérios</h2><span class="section-tag">Metodologia</span></div>
+  <p><strong>Coeficiente principal: Fisher-Pearson ajustado (G1)</strong>, o mesmo de <code>pandas.Series.skew()</code>,
+    <code>scipy.stats.skew(bias=False)</code> e da função DISTORÇÃO/SKEW do Excel:</p>
+  <div class="formula">g1 = m₃ / m₂<sup>3/2</sup>, &nbsp; m<sub>r</sub> = (1/n) Σ (x<sub>i</sub> − x̄)<sup>r</sup> &nbsp;&nbsp;⟹&nbsp;&nbsp; G1 = g1 · √(n(n − 1)) / (n − 2)</div>
+  <p><strong>Justificativa:</strong> trabalhamos com amostras (≈ 75 jogos de uma temporada), e o fator √(n(n−1))/(n−2) corrige o viés do
+    coeficiente de momento g1 em amostras pequenas — coerente com o uso do desvio padrão amostral (n − 1) em todo o relatório. Como
+    G1 usa todos os valores, reage às caudas; por isso também mostramos o <strong>coeficiente de Bowley</strong>, baseado só nos quartis
+    (robusto a outliers):</p>
+  <div class="formula">Bowley = (Q3 + Q1 − 2·Mediana) / (Q3 − Q1), &nbsp; varia entre −1 e 1</div>
+  <ul class="tight">
+    <li><strong>Direção</strong> (sinal de G1): positivo = assimétrica à direita (cauda longa de valores altos); negativo = à esquerda; zero = simétrica.</li>
+    <li><strong>Intensidade</strong> (Bulmer, 1979): |G1| &lt; 0,5 aproximadamente simétrica; 0,5 ≤ |G1| &lt; 1 moderada; |G1| ≥ 1 forte.</li>
+    <li><strong>Significância</strong>: erro-padrão EP = √(6n(n−1) / ((n−2)(n+1)(n+3))) ≈ 0,28 para n = 75; |G1|/EP &gt; 1,96 indica assimetria
+      estatisticamente diferente de zero (α = 0,05).</li>
+  </ul>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Confirmação visual — {{ VARIABLES[variable].label }}</h2><span class="section-tag">Histograma + KDE + boxplot</span></div>
+  <div class="{{ 'grid-2' if teams|length > 1 }}">
+    {% for code in teams %}
+      {{ m.chart("chart-hist-" ~ code, histograms[code], size="compact") }}
+    {% endfor %}
+  </div>
+  <p class="table-note">Histograma normalizado como densidade (área total = 1) com classes pela regra de Freedman-Diaconis
+    (arredondadas para inteiros, pois as variáveis são contagens); curva KDE gaussiana com largura de banda de Scott. O boxplot embaixo
+    compartilha o eixo horizontal.</p>
+  <div class="interpretation">
+    <h3>Interpretação — {{ VARIABLES[variable].label }}</h3>
+    {{ m.paragraphs(variable_texts) }}
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Quadro de assimetria: todas as variáveis</h2><span class="section-tag">Variáveis × times</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Variável</th><th>Time</th><th class="num">g1 (momento)</th><th class="num">G1 (ajustado)</th><th class="num">Bowley</th><th class="num">EP</th><th class="num">|G1| / EP</th><th>Direção</th><th>Intensidade</th><th>Significativa?</th></tr></thead>
+      <tbody>
+        {% for key in VARIABLE_KEYS %}
+          {% for code in TEAM_CODES %}
+            {% set s = summary[key][code].skew %}
+            <tr class="{{ 'highlight' if key == variable }}">
+              {% if loop.first %}<td rowspan="{{ TEAM_CODES|length }}"><a href="?variable={{ key }}&team={{ team }}">{{ VARIABLES[key].label }}</a></td>{% endif %}
+              <td>{{ TEAMS[code].short }}</td>
+              <td class="num">{{ s.g1|num }}</td>
+              <td class="num"><strong>{{ s.G1|num }}</strong></td>
+              <td class="num">{{ s.bowley|num }}</td>
+              <td class="num">{{ s.ses|num }}</td>
+              <td class="num">{{ (s.z|abs)|num }}</td>
+              <td>{{ s.direction }}</td>
+              <td>{{ s.intensity }}</td>
+              <td>{{ 'Sim' if s.significant else 'Não' }}</td>
+            </tr>
+          {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ m.chart("chart-skew", bars_chart, "Linhas pontilhadas em ±0,5 (limite da assimetria moderada) e tracejadas em ±1 (limite da assimetria forte).") }}
+  <div class="interpretation">
+    <h3>Interpretação geral</h3>
+    {{ m.paragraphs(overview_texts) }}
+  </div>
+</section>
+{% endblock %}

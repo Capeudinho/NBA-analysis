@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Síntese e interpretação{% endblock %}
+{% block content %}
+{{ m.page_header("5", "Síntese e interpretação",
+   "Conclusões integradas da qualidade dos dados e da estatística descritiva, perfil dos dois times, decisões
+   metodológicas tomadas pelo grupo e limitações da análise.") }}
+
+<section class="section">
+  <div class="section-head"><h2>Painel integrado</h2><span class="section-tag">Medidas-chave por variável e time</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th rowspan="2">Variável</th>{% for code in TEAM_CODES %}<th colspan="6" style="text-align:center">{{ TEAMS[code].name }}</th>{% endfor %}</tr>
+        <tr>{% for code in TEAM_CODES %}<th class="num">Média</th><th class="num">Mediana</th><th class="num">CV</th><th class="num">IQR</th><th class="num">G1</th><th class="num">z (liga)</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for key in VARIABLE_KEYS %}
+          <tr>
+            <td><strong>{{ VARIABLES[key].label }}</strong></td>
+            {% for code in TEAM_CODES %}
+              {% set s = summary[key][code] %}
+              <td class="num">{{ s.describe.mean|num }}</td>
+              <td class="num">{{ s.describe.median|num }}</td>
+              <td class="num">{{ s.cv.cv|pct }}</td>
+              <td class="num">{{ s.iqr.iqr|num }}</td>
+              <td class="num">{{ s.skew.G1|num }}</td>
+              <td class="num">{{ zscores[key][code]|signed }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">Média, mediana e IQR em unidades por jogo da variável; CV em %; G1 e z adimensionais.</p>
+  {{ m.chart("chart-z", z_chart) }}
+</section>
+
+<section class="section">
+  <h2>1. A base e a qualidade dos dados</h2>
+  <div class="prose">{{ m.paragraphs(texts.data) }}</div>
+</section>
+
+<section class="section">
+  <h2>2. Perfil dos times</h2>
+  <div class="prose">{{ m.paragraphs(texts.teams) }}</div>
+</section>
+
+<section class="section">
+  <h2>3. Regularidade e forma das distribuições</h2>
+  <div class="prose">{{ m.paragraphs(texts.distribution) }}</div>
+</section>
+
+<section class="section">
+  <h2>4. Decisões metodológicas e justificativas</h2>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Tema</th><th>Decisão</th><th>Justificativa</th></tr></thead>
+      <tbody>
+        <tr><td>Framework</td><td>Python + Flask + Jinja; gráficos com Plotly</td><td>Sugestão do enunciado; Plotly gera gráficos interativos (zoom, legenda clicável, tooltips) sem exigir JavaScript próprio. A biblioteca JS é servida pela própria aplicação, que funciona sem internet.</td></tr>
+        <tr><td>Unidade de análise</td><td>Time × jogo, sem agregar</td><td>As medidas pedidas descrevem a variação jogo a jogo de cada time.</td></tr>
+        <tr><td>Desvio padrão e variância</td><td>Amostrais (n − 1)</td><td>Os jogos são uma amostra da temporada (que estava incompleta); o estimador é não viesado para a variância.</td></tr>
+        <tr><td>Quartis</td><td>Interpolação linear (tipo 7)</td><td>Padrão de numpy/pandas; usado igualmente em quartis, IQR e boxplot para garantir consistência.</td></tr>
+        <tr><td>Outliers</td><td>Tukey com k = 1,5 (k = 3 para extremos)</td><td>Não supõe normalidade e é o critério do boxplot; Grubbs e Z-score são exibidos como comparação.</td></tr>
+        <tr><td>Tratamento de outliers</td><td>Manter</td><td>Nenhum viola regras de consistência; são atuações reais. Usamos medidas robustas quando necessário.</td></tr>
+        <tr><td>Assimetria</td><td>Fisher-Pearson ajustado (G1) + Bowley</td><td>G1 corrige o viés de amostra pequena; Bowley mostra se a assimetria vem do miolo ou só das caudas.</td></tr>
+        <tr><td>Intensidade da assimetria</td><td>|G1| &lt; 0,5; 0,5–1; ≥ 1</td><td>Critério de Bulmer (1979), complementado pelo teste |G1|/EP &gt; 1,96.</td></tr>
+        <tr><td>CV</td><td>s / média × 100%, com CV robusto e IQR/mediana</td><td>Convenção amostral e percentual; versões robustas para combinações assimétricas.</td></tr>
+        <tr><td>z-score no gráfico de barras</td><td>Relativo às médias dos 30 times</td><td>Compara times com o "time médio" da liga e põe variáveis de escalas diferentes no mesmo eixo.</td></tr>
+        <tr><td>Métodos multivariados</td><td>K-NN, LOF e DBSCAN no espaço das 7 variáveis padronizadas</td><td>Em uma única coluna de contagens com muitos empates, distâncias zeram e o LOF degenera.</td></tr>
+        <tr><td>Limiar dos escores (ECOD, K-NN, LOF)</td><td>Q3 + k·IQR dos escores</td><td>Mesma lógica de Tukey usada no restante do relatório, sem fixar a priori a proporção de outliers.</td></tr>
+        <tr><td>Valores ausentes</td><td>Nenhuma imputação</td><td>Não há ausentes; os testes de MCAR foram demonstrados por simulação.</td></tr>
+        <tr><td>Data</td><td>Converter para datetime e derivar atributos</td><td>Permite validar o calendário e criar variáveis úteis (descanso, back-to-back, fase da temporada).</td></tr>
+        <tr><td>Colunas para ML</td><td>Excluir IDs, texto bruto, vazamento (W, L, W_PCT) e combinações exatas (PTS, REB)</td><td>Evita memorização, vazamento de informação do alvo e multicolinearidade perfeita.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <h2>5. Limitações</h2>
+  <ul class="tight">
+    {% for item in texts.limitations %}<li>{{ item|safe }}</li>{% endfor %}
+  </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Tendência central, dispersão e gráficos{% endblock %}
+{% block content %}
+{{ m.page_header("4.1", "Tendência central, dispersão, quartis e outliers",
+   "Média, mediana, moda, menor e maior valor, amplitude, desvio padrão, variância, quartis e outliers de Pontos,
+   Rebotes, Assistências, STL, BLK, PF e FG3M — com boxplot completo e gráfico de barras comparativo.") }}
+
+<form class="controls" method="get">
+  <label>Variável
+    <select name="variable">{{ m.variable_options(variable) }}</select>
+  </label>
+  <label>Time
+    <select name="team">{{ m.team_options(team) }}</select>
+  </label>
+  <input type="hidden" name="scale" value="{{ scale }}">
+  {{ m.submit_fallback() }}
+</form>
+
+<section class="section">
+  <div class="section-head"><h2>Medidas descritivas por variável e time</h2><span class="section-tag">Unidade: por jogo</span></div>
+  {% for code in teams %}
+    <div class="table-wrap">
+      <table class="data">
+        <caption>{{ m.team_chip(code) }}</caption>
+        <thead>
+          <tr><th>Variável</th><th class="num">n</th><th class="num">Média</th><th class="num">Mediana</th><th class="num">Moda</th>
+            <th class="num">Mínimo</th><th class="num">Máximo</th><th class="num">Amplitude</th><th class="num">Desvio padrão</th><th class="num">Variância</th>
+            <th class="num">Q1</th><th class="num">Q3</th><th class="num">Outliers</th></tr>
+        </thead>
+        <tbody>
+          {% for key in VARIABLE_KEYS %}
+            {% set d = summary[key][code].describe %}
+            <tr class="{{ 'highlight' if key == variable }}">
+              <td><a href="?variable={{ key }}&team={{ team }}&scale={{ scale }}">{{ VARIABLES[key].label }}</a> <span class="table-note">({{ VARIABLES[key].unit_short }})</span></td>
+              <td class="num">{{ d.n }}</td>
+              <td class="num">{{ d.mean|num }}</td>
+              <td class="num">{{ d.median|num }}</td>
+              <td class="num">{% for mo in d.modes %}{{ mo|num }}{{ ' / ' if not loop.last }}{% endfor %}</td>
+              <td class="num">{{ d.min|num }}</td>
+              <td class="num">{{ d.max|num }}</td>
+              <td class="num">{{ d.range|num }}</td>
+              <td class="num">{{ d.std|num }}</td>
+              <td class="num">{{ d.var|num }}</td>
+              <td class="num">{{ d.q1|num }}</td>
+              <td class="num">{{ d.q3|num }}</td>
+              <td class="num {{ 'zero' if d.n_outliers == 0 }}">{{ d.n_outliers }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endfor %}
+  <p class="table-note">Variância em unidades ao quadrado (ex.: pontos²). Moda: valor mais frequente; quando há empate, todas são listadas.
+    Outliers pela regra de Tukey (fora de Q1 − 1,5·IQR e Q3 + 1,5·IQR).</p>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Boxplot — {{ VARIABLES[variable].label }}</h2><span class="section-tag">Todos os elementos pedidos</span></div>
+  {{ m.chart("chart-box", box_chart, "Caixa = Q1 a Q3 com a mediana; bigodes até o valor mais extremo dentro dos limites; tracejados = limites inferior (LI) e superior (LS); losango = média; estrela = moda; triângulos = outliers superiores (▲) e inferiores (▼).") }}
+
+  <div class="grid-2">
+    {% for code in teams %}
+      <div class="table-wrap">
+        <table class="data">
+          <caption>Outliers de {{ VARIABLES[variable].label|lower }} — {{ TEAMS[code].name }}</caption>
+          <thead><tr><th>Data</th><th>Confronto</th><th>Resultado</th><th class="num">Valor</th><th>Tipo</th></tr></thead>
+          <tbody>
+            {% for o in outlier_lists[code] %}
+              <tr><td>{{ o.date|date }}</td><td>{{ o.matchup }}</td><td>{{ 'Vitória' if o.win else 'Derrota' }}</td><td class="num">{{ o.value|num }}</td><td>{{ o.side }}</td></tr>
+            {% else %}
+              <tr><td colspan="5">Nenhum outlier: todos os jogos estão entre {{ summary[variable][code].describe.lower_fence|num }} e {{ summary[variable][code].describe.upper_fence|num }}.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="interpretation">
+    <h3>Interpretação — {{ VARIABLES[variable].label }}</h3>
+    {{ m.paragraphs(texts) }}
+  </div>
+</section>
+
+<section class="section" id="barras">
+  <div class="section-head">
+    <h2>Gráfico de barras comparativo</h2>
+    <div class="segmented" role="group" aria-label="Escala do gráfico">
+      <a href="?variable={{ variable }}&team={{ team }}&scale=raw#barras" class="{{ 'active' if scale == 'raw' }}">Valores brutos</a>
+      <a href="?variable={{ variable }}&team={{ team }}&scale=z#barras" class="{{ 'active' if scale == 'z' }}">z-score</a>
+    </div>
+  </div>
+  {{ m.chart("chart-bars", bar_chart, size="xwide" if scale == "raw" else "wide") }}
+
+  <div class="table-wrap">
+    <table class="data">
+      <caption>Comparação com a liga</caption>
+      <thead><tr><th>Variável</th><th class="num">Média da liga (por jogo)</th>
+        {% for code in TEAM_CODES %}<th class="num">Média {{ TEAMS[code].short }}</th><th class="num">z {{ TEAMS[code].short }}</th><th class="num">Posição {{ TEAMS[code].short }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for key in VARIABLE_KEYS %}
+          <tr class="{{ 'highlight' if key == variable }}">
+            <td>{{ VARIABLES[key].label }}</td>
+            <td class="num">{{ reference[key].game_mean|num }}</td>
+            {% for code in TEAM_CODES %}
+              <td class="num">{{ summary[key][code].describe.mean|num }}</td>
+              <td class="num">{{ zscores[key][code]|signed }}</td>
+              <td class="num">{{ reference[key].rank[code] }}º</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">Posição entre as médias dos 30 times (1º = maior média). Para faltas pessoais, uma posição alta significa
+    <em>mais</em> faltas — o que não é desejável.</p>
+
+  <div class="interpretation">
+    <h3>Interpretação</h3>
+    {{ m.paragraphs(z_texts) }}
+  </div>
+</section>
+{% endblock %}

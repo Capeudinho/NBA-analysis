@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Outliers e inconsistências{% endblock %}
+{% block content %}
+{{ m.page_header("3.3", "Outliers e valores inconsistentes por coluna",
+   "Implementação e teoria de Z-score, IQR/Boxplot, Grubbs, ECOD, K-NN, DBSCAN e LOF. Os valores
+   <em>inconsistentes</em> foram verificados na seção 3.1 (nenhuma violação); aqui o foco são os valores atípicos.") }}
+
+<form class="controls" method="get">
+  <label>Escopo
+    <select name="scope">
+      {% for key, text in scope_options.items() %}<option value="{{ key }}" {{ 'selected' if key == scope }}>{{ text }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Coluna em detalhe
+    <select name="column">
+      {% for c in columns %}<option value="{{ c }}" {{ 'selected' if c == column }}>{{ label_for(c) }} ({{ c }})</option>{% endfor %}
+    </select>
+  </label>
+  <label>k de Tukey (IQR e limiar dos escores)
+    <select name="k">
+      <option value="1.5" {{ 'selected' if k == 1.5 }}>1,5 (outliers moderados)</option>
+      <option value="3" {{ 'selected' if k == 3.0 }}>3,0 (outliers extremos)</option>
+    </select>
+  </label>
+  {{ m.submit_fallback() }}
+  <p class="hint">{{ n|int }} registros no escopo.</p>
+</form>
+
+<section class="section">
+  <div class="section-head"><h2>Teoria dos métodos</h2><span class="section-tag">Como cada um decide</span></div>
+  <details class="theory">
+    <summary>Z-score (e Z-score robusto)</summary>
+    <div>
+      <p>Mede quantos desvios-padrão cada valor está da média: <span class="formula">z<sub>i</sub> = (x<sub>i</sub> − x̄) / s</span>
+        Sob normalidade, |z| &gt; 3 ocorre com probabilidade 0,27%, por isso é o limiar usado. <strong>Limitação:</strong> média e desvio
+        são eles próprios inflados pelos outliers (efeito de mascaramento). A versão robusta de Iglewicz e Hoaglin troca média e
+        desvio por mediana e MAD: <span class="formula">z*<sub>i</sub> = 0,6745 (x<sub>i</sub> − mediana) / MAD</span> com limiar |z*| &gt; 3,5.</p>
+    </div>
+  </details>
+  <details class="theory">
+    <summary>IQR / Boxplot (regra de Tukey)</summary>
+    <div>
+      <p>Usa apenas quartis, que não dependem dos extremos: <span class="formula">LI = Q1 − k·IQR, &nbsp; LS = Q3 + k·IQR, &nbsp; IQR = Q3 − Q1</span>
+        com k = 1,5 (moderados) ou 3 (extremos). Não supõe normalidade e é o mesmo critério do boxplot da seção 4. <strong>Limitação:</strong>
+        em colunas quase constantes (IQR = 0, como minutos) qualquer valor diferente da maioria vira outlier.</p>
+    </div>
+  </details>
+  <details class="theory">
+    <summary>Teste de Grubbs</summary>
+    <div>
+      <p>Teste de hipóteses para um outlier numa amostra normal. H<sub>0</sub>: não há outlier.
+        <span class="formula">G = max |x<sub>i</sub> − x̄| / s, &nbsp; G<sub>crít</sub> = ((n − 1)/√n) · √( t² / (n − 2 + t²) ), &nbsp; t = t<sub>α/(2n), n−2</sub></span>
+        Se G &gt; G<sub>crít</sub>, o ponto mais extremo é declarado outlier, removido e o teste é repetido. Usamos α = 0,05 (bilateral).
+        <strong>Vantagem:</strong> controla a taxa de falsos positivos. <strong>Limitação:</strong> depende da normalidade e é conservador para
+        dados discretos e assimétricos.</p>
+    </div>
+  </details>
+  <details class="theory">
+    <summary>ECOD (Empirical Cumulative Distribution-based Outlier Detection)</summary>
+    <div>
+      <p>Método não paramétrico (Li et al., 2022). Para cada dimensão estima as funções de distribuição empíricas à esquerda e à direita e
+        mede a raridade de cada valor pela probabilidade de cauda: <span class="formula">O(x) = max{ −Σ<sub>j</sub> ln F̂<sub>esq</sub>(x<sub>j</sub>), −Σ<sub>j</sub> ln F̂<sub>dir</sub>(x<sub>j</sub>), −Σ<sub>j</sub> ln F̂<sub>auto</sub>(x<sub>j</sub>) }</span>
+        onde a cauda "auto" é escolhida pelo sinal da assimetria de cada dimensão. Não tem hiperparâmetros e é interpretável (mostra
+        quais dimensões contribuem). Como o escore é baseado em <em>postos</em>, no caso univariado ele sempre identifica os valores mais raros
+        da amostra — o limiar (Tukey sobre os escores) define quantos.</p>
+    </div>
+  </details>
+  <details class="theory">
+    <summary>K-NN para anomalias</summary>
+    <div>
+      <p>Um ponto é anômalo se está longe dos vizinhos. O escore é a distância média aos k = 10 vizinhos mais próximos (Angiulli e Pizzuti, 2002),
+        calculada nas variáveis padronizadas. Detecta outliers <em>globais</em>, mas não se adapta a regiões de densidades diferentes.</p>
+    </div>
+  </details>
+  <details class="theory">
+    <summary>DBSCAN</summary>
+    <div>
+      <p>Algoritmo de agrupamento por densidade: pontos com pelo menos <em>minPts</em> vizinhos num raio <em>eps</em> são núcleos; pontos alcançáveis a
+        partir de núcleos formam grupos; o que sobra é <strong>ruído</strong> — os outliers. Usamos minPts = 2 × dimensões (Sander et al., 1998) e
+        eps no "joelho" do gráfico k-distância (Ester et al., 1996), identificado como o ponto de maior distância à corda da curva.</p>
+    </div>
+  </details>
+  <details class="theory">
+    <summary>LOF (Local Outlier Factor)</summary>
+    <div>
+      <p>Compara a densidade local de um ponto com a dos vizinhos (Breunig et al., 2000):
+        <span class="formula">LOF<sub>k</sub>(p) = média<sub>o ∈ N<sub>k</sub>(p)</sub> [ lrd<sub>k</sub>(o) / lrd<sub>k</sub>(p) ]</span>
+        LOF ≈ 1: densidade igual à da vizinhança; LOF &gt; 1: ponto em região mais esparsa. Detecta outliers <em>locais</em>, que o K-NN global perde.</p>
+    </div>
+  </details>
+  <div class="callout">
+    <strong>Decisões de aplicação.</strong> Z-score, IQR, Grubbs e ECOD são aplicados <em>coluna a coluna</em>. K-NN, DBSCAN e LOF são métodos de
+    distância/densidade pensados para o espaço multivariado: aplicados a uma única coluna de contagens inteiras, centenas de valores empatados
+    produzem distâncias nulas e o LOF chega a valores da ordem de 10<sup>9</sup>. Por isso eles foram aplicados aos jogos como pontos no espaço das
+    sete variáveis do enunciado (padronizadas em z-score) e, para responder "por coluna", contamos em quais colunas os jogos sinalizados têm
+    |z| ≥ 2. Para os métodos de escore (ECOD, K-NN, LOF), o limiar é a mesma regra de Tukey aplicada aos escores: escore &gt; Q3 + k·IQR.
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Outliers por coluna — métodos univariados</h2><span class="section-tag">{{ scope_options[scope] }} · k = {{ k|num(1) }}</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th>Coluna</th><th>Rótulo</th>
+          {% for key, text in univariate_methods.items() %}<th class="num">{{ text if key != 'iqr' else text ~ ' (' ~ (k|num(1)) ~ ' × IQR)' }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in table %}
+          <tr class="{{ 'highlight' if row.column == column }}">
+            <td><a href="?scope={{ scope }}&column={{ row.column }}&k={{ k }}"><code>{{ row.column }}</code></a></td>
+            <td>{{ label_for(row.column) }}</td>
+            {% for key in univariate_methods %}<td class="num {{ 'zero' if row[key] == 0 }}">{{ row[key]|int }}</td>{% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr><td colspan="2">Total de campos sinalizados</td>{% for key in univariate_methods %}<td class="num">{{ totals[key]|int }}</td>{% endfor %}</tr>
+      </tfoot>
+    </table>
+  </div>
+  <p class="table-note">Clique numa coluna para vê-la em detalhe. Valores inconsistentes (regras da seção 3.1): 0 em todas as colunas.</p>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Detalhe: {{ column_label }}</h2><span class="section-tag">{{ n_flagged|int }} jogos sinalizados por ao menos um método</span></div>
+  {{ m.chart("chart-strip", strip_chart, "Cada ponto é um jogo; a cor indica quantos dos 5 métodos univariados o sinalizaram (mais escuro = mais consenso).") }}
+  <div class="grid-2">
+    <div class="table-wrap">
+      <table class="data">
+        <caption>Parâmetros e limiares calculados</caption>
+        <tbody>
+          <tr><td>Z-score</td><td>|z| &gt; {{ info.zscore.threshold|num }}</td></tr>
+          <tr><td>Z-score robusto</td><td>|z*| &gt; {{ info.robust_z.threshold|num }}</td></tr>
+          <tr><td>IQR</td><td>fora de [{{ info.iqr.lower|num }}; {{ info.iqr.upper|num }}]</td></tr>
+          <tr><td>ECOD</td><td>escore &gt; {{ info.ecod.threshold|num }}</td></tr>
+          <tr><td>Grubbs (α = 0,05)</td><td>
+            {% for step in info.grubbs.steps[:6] %}valor {{ step.value|num }}: G = {{ step.G|num }} {{ '>' if step.G > step.G_crit else '≤' }} G<sub>crít</sub> = {{ step.G_crit|num }}{{ '<br>'|safe if not loop.last }}{% endfor %}
+            {% if info.grubbs.steps|length > 6 %}<br>… {{ info.grubbs.steps|length - 6 }} iterações a mais{% endif %}
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap">
+      <table class="data">
+        <caption>Jogos sinalizados (até 40, mais consensuais primeiro)</caption>
+        <thead><tr><th>Data</th><th>Confronto</th><th class="num">Valor</th><th class="num">Z</th><th class="num">Z*</th><th class="num">IQR</th><th class="num">Grubbs</th><th class="num">ECOD</th></tr></thead>
+        <tbody>
+          {% for _, row in flagged.iterrows() %}
+            <tr>
+              <td>{{ row.game_date|date }}</td><td>{{ row.matchup }}</td><td class="num">{{ row[column]|num }}</td>
+              {% for key in ['zscore', 'robust_z', 'iqr', 'grubbs', 'ecod'] %}<td class="num">{{ '●' if row[key] else '' }}</td>{% endfor %}
+            </tr>
+          {% else %}
+            <tr><td colspan="8">Nenhum jogo sinalizado nesta coluna.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Métodos multivariados: ECOD, K-NN, LOF e DBSCAN</h2><span class="section-tag">{{ multi.n|int }} jogos × {{ multi.d }} variáveis</span></div>
+  <div class="kpis">
+    {% for key, text in multivariate_methods.items() %}
+      <div class="kpi"><div class="value">{{ multi.counts[key]|int }}</div><div class="label">{{ text }}{% if key == 'dbscan' %} (eps = {{ multi.results.dbscan.eps|num }}, minPts = {{ multi.results.dbscan.min_samples }}){% endif %}</div></div>
+    {% endfor %}
+  </div>
+  <div class="table-wrap">
+    <table class="data">
+      <caption>Resposta "por coluna": nos jogos sinalizados, quantos têm |z| ≥ 2 em cada variável</caption>
+      <thead><tr><th>Variável</th>{% for key, text in multivariate_methods.items() %}<th class="num">{{ text }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for var in VARIABLE_KEYS %}
+          <tr><td>{{ VARIABLES[var].label }}</td>{% for key in multivariate_methods %}<td class="num {{ 'zero' if multi.attribution[key][var] == 0 }}">{{ multi.attribution[key][var]|int }}</td>{% endfor %}</tr>
+        {% endfor %}
+        <tr><td><em>Nenhuma variável extrema (anomalia de combinação)</em></td>{% for key in multivariate_methods %}<td class="num">{{ multi.attribution[key].none|int }}</td>{% endfor %}</tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="grid-2">
+    {{ m.chart("chart-pca", pca_chart, "Projeção por componentes principais apenas para visualização; os métodos usam as 7 dimensões.", size="compact") }}
+    {{ m.chart("chart-kdist", kdist_chart, "Distância de cada jogo ao seu minPts-ésimo vizinho, em ordem crescente. O joelho separa regiões densas do ruído.", size="compact") }}
+  </div>
+  <div class="grid-2">
+    <div class="table-wrap">
+      <table class="data">
+        <caption>Concordância entre métodos (índice de Jaccard)</caption>
+        <thead><tr><th></th>{% for key in multivariate_methods %}<th class="num">{{ key|upper }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for a in multivariate_methods %}
+            <tr><td><strong>{{ a|upper }}</strong></td>{% for b in multivariate_methods %}<td class="num">{{ multi.agreement[a][b]|num }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap">
+      <table class="data">
+        <caption>Jogos mais anômalos ({{ n_flagged_multi|int }} sinalizados por ≥ 1 método; até 30)</caption>
+        <thead><tr><th>Data</th><th>Confronto</th><th class="num">Métodos</th><th>Variáveis extremas (|z| ≥ 2)</th></tr></thead>
+        <tbody>
+          {% for _, row in flagged_multi.iterrows() %}
+            <tr><td>{{ row.game_date|date }}</td><td>{{ row.matchup }}</td><td class="num">{{ row.n_methods|int }}</td>
+              <td>{% for v in row.drivers %}{{ VARIABLES[v].abbr }} = {{ row[v]|num(0) }}{{ ', ' if not loop.last }}{% else %}<em>combinação atípica</em>{% endfor %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="interpretation">
+    <h3>Interpretação</h3>
+    <p><strong>Os métodos discordam em quantidade, e isso é esperado.</strong> Do mais conservador ao mais liberal, o total de campos
+      sinalizados no escopo foi:
+      {% for key, value in totals|dictsort(by="value") %}{{ univariate_methods[key] }} = {{ value|int }}{{ "; " if not loop.last else "." }}{% endfor %}
+      Grubbs e o Z-score robusto tendem a ser os mais conservadores: o primeiro controla a taxa de falsos positivos sob normalidade e o
+      segundo não se deixa inflar pelos próprios extremos. O ECOD, por ser baseado em postos, sempre encontra "os valores mais raros" de
+      cada coluna, mesmo em distribuições bem comportadas — seus escores servem mais para ordenar a raridade do que para afirmar que um
+      valor é errado. O teste de Grubbs é o que melhor responde à pergunta "há algum valor improvável demais?".</p>
+    <p><strong>Casos que pedem cuidado.</strong> Em minutos jogados, quase todos os registros valem 240, o IQR é zero e qualquer
+      prorrogação vira outlier para todos os métodos — mas são jogos reais, não erros. O mesmo vale para as colunas acumuladas
+      (vitórias, derrotas e aproveitamento), cujos extremos aparecem no início da temporada, quando o aproveitamento só pode ser 0 ou 1.
+      Já nas estatísticas de jogo, os valores sinalizados são atuações excepcionais (ex.: muitos rebotes ofensivos, muitas cestas de 3),
+      todas compatíveis com as regras de consistência.</p>
+    {% set ordered = multi.counts|dictsort(by="value") %}
+    <p><strong>Multivariado.</strong> Os métodos de distância e densidade encontram jogos atípicos pela <em>combinação</em> de estatísticas.
+      Neste escopo, o mais liberal foi {{ multivariate_methods[ordered[-1][0]] }} ({{ ordered[-1][1]|int }} jogos) e o mais restritivo,
+      {{ multivariate_methods[ordered[0][0]] }} ({{ ordered[0][1]|int }}). A concordância (Jaccard) mostra quanto os conjuntos se sobrepõem;
+      {% if strong_games %}{{ strong_games|int }} {{ 'jogo foi sinalizado' if strong_games == 1 else 'jogos foram sinalizados' }} por 3 ou 4
+      métodos — os casos realmente atípicos — e {{ strong_with_driver|int }} {{ 'dele tem' if strong_games == 1 else 'deles têm' }} ao menos
+      uma variável com |z| ≥ 2, o que conecta a visão multivariada com a contagem por coluna{% else %}nenhum jogo foi sinalizado por 3 ou 4
+      métodos, o que indica que, neste escopo, não há jogos atípicos de forma consensual{% endif %}.</p>
+    <p><strong>Decisão.</strong> Nenhum outlier foi removido ou corrigido: não há evidência de erro de registro (seção 3.1), e retirar atuações
+      reais distorceria a descrição dos times. A sensibilidade a esses jogos é tratada com medidas robustas (mediana, IQR) na seção 4.
+      Use o seletor <em>k</em> = 3 para ver como o número de sinalizações cai quando se exige um afastamento extremo.</p>
+  </div>
+</section>
+{% endblock %}

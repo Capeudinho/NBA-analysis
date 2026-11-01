@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Dicionário de dados{% endblock %}
+{% block content %}
+{{ m.page_header("2", "Dicionário de dados (apêndice)",
+   "Significado de cada coluna da base original e das colunas criadas no tratamento. Siglas: FG = field goal
+   (arremesso de quadra), FG3 = arremesso de 3 pontos, FT = free throw (lance livre), M = made (convertido),
+   A = attempted (tentado), PCT = percentual.") }}
+
+<section class="section">
+  <div class="section-head"><h2>2.1 Colunas originais ({{ columns|length }})</h2><span class="section-tag">Base entregue</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Original</th><th>Novo nome</th><th>Rótulo</th><th>Descrição</th><th>Tipo</th><th>Escala</th><th>Unidade</th><th>Exemplo</th></tr></thead>
+      <tbody>
+        {% for col in columns %}
+          <tr>
+            <td><code>{{ col.original }}</code></td>
+            <td><code>{{ col.new }}</code></td>
+            <td><strong>{{ col.label }}</strong></td>
+            <td>{{ col.description }}</td>
+            <td>{{ col.semantic_type }}</td>
+            <td>{{ col.scale }}</td>
+            <td>{{ col.unit }}</td>
+            <td>{{ examples[col.original] }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>2.2 Colunas derivadas ({{ derived|length }})</h2><span class="section-tag">Criadas no tratamento</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Nome</th><th>Rótulo</th><th>Descrição</th><th>Tipo</th><th>Escala</th><th>Origem</th></tr></thead>
+      <tbody>
+        {% for col in derived %}
+          <tr>
+            <td><code>{{ col.new }}</code></td>
+            <td><strong>{{ col.label }}</strong></td>
+            <td>{{ col.description }}</td>
+            <td>{{ col.semantic_type }}</td>
+            <td>{{ col.scale }}</td>
+            <td><code>{{ col.origin }}</code></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <h2>2.3 Variáveis analisadas na estatística descritiva</h2>
+  <p>O enunciado pede a análise univariada de sete estatísticas por jogo, para os times do grupo:</p>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Sigla</th><th>Coluna tratada</th><th>Variável</th><th>Unidade usada nas tabelas e gráficos</th></tr></thead>
+      <tbody>
+        {% for key in VARIABLE_KEYS %}
+          <tr><td><code>{{ VARIABLES[key].abbr }}</code></td><td><code>{{ key }}</code></td><td>{{ VARIABLES[key].label }}</td><td>{{ VARIABLES[key].unit }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

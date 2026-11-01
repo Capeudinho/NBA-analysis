@@ -1,0 +1,50 @@
+{% macro page_header(number, title, lead) -%}
+  <header class="page-header">
+    <p class="eyebrow">Seção {{ number }}</p>
+    <h1>{{ title }}</h1>
+    {% if lead %}<p class="lead">{{ lead|safe }}</p>{% endif %}
+  </header>
+{%- endmacro %}
+
+{% macro chart(id, figure_json, caption=None, size="wide") -%}
+  <figure class="chart-card">
+    <div class="chart chart-{{ size }}" id="{{ id }}" role="img" aria-label="Gráfico interativo"></div>
+    <script type="application/json" id="{{ id }}-data">{{ figure_json|safe }}</script>
+    {% if caption %}<figcaption>{{ caption|safe }}</figcaption>{% endif %}
+  </figure>
+{%- endmacro %}
+
+{% macro paragraphs(texts) -%}
+  {% for text in texts %}{% if text %}<p>{{ text|safe }}</p>{% endif %}{% endfor %}
+{%- endmacro %}
+
+{% macro team_options(selected, include_both=True) -%}
+  {% if include_both %}<option value="both" {{ 'selected' if selected == 'both' }}>Ambos os times</option>{% endif %}
+  {% for code in TEAM_CODES %}
+    <option value="{{ code }}" {{ 'selected' if selected == code }}>{{ TEAMS[code].name }}</option>
+  {% endfor %}
+{%- endmacro %}
+
+{% macro variable_options(selected) -%}
+  {% for key in VARIABLE_KEYS %}
+    <option value="{{ key }}" {{ 'selected' if selected == key }}>{{ VARIABLES[key].label }} ({{ VARIABLES[key].abbr }})</option>
+  {% endfor %}
+{%- endmacro %}
+
+{% macro team_chip(code) -%}
+  <span class="team-chip"><span class="swatch" style="background: {{ TEAMS[code].color }}"></span>{{ TEAMS[code].name }}</span>
+{%- endmacro %}
+
+{% macro status(ok, ok_text="OK", fail_text="Atenção") -%}
+  {% if ok %}<span class="badge badge-ok">✓ {{ ok_text }}</span>{% else %}<span class="badge badge-warn">! {{ fail_text }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro decision(value) -%}
+  {% if value == 'Manter' %}<span class="badge badge-ok">Manter</span>
+  {% elif value == 'Alvo' %}<span class="badge badge-info">Alvo</span>
+  {% else %}<span class="badge badge-muted">Excluir</span>{% endif %}
+{%- endmacro %}
+
+{% macro submit_fallback() -%}
+  <noscript><button type="submit" class="button">Atualizar</button></noscript>
+{%- endmacro %}
