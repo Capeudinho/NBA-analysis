@@ -98,6 +98,15 @@ def test_missing_tests():
     assert mar["fairclough"]["models"][0]["reject"]
 
 
+def test_health_route(client):
+    response = client.get("/saude")
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["status"] == "ok"
+    assert body["linhas"] == len(get_dataset())
+    assert body["times_do_grupo"] == config.TEAM_CODES
+
+
 def test_number_formatting():
     assert number(1234.567) == "1.234,57"
     assert number(-0.5) == "−0,50"

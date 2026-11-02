@@ -3,7 +3,7 @@
 from functools import lru_cache
 
 import plotly
-from flask import Blueprint, Response, render_template, request
+from flask import Blueprint, Response, jsonify, render_template, request
 
 from . import charts, config, data, missing, narrative, outliers, quality, stats
 from .dictionary import COLUMNS, DERIVED_COLUMNS, DROP, KEEP, TARGET, label_for
@@ -73,6 +73,27 @@ def plotly_js():
     response = Response(_plotly_js(), mimetype="application/javascript")
     response.headers["Cache-Control"] = "public, max-age=604800"
     return response
+
+
+@bp.route("/saude")
+def health():
+    """Health check: confirms the app booted and the dataset loaded correctly.
+
+    Useful for uptime monitors (ex.: UptimeRobot) that keep a free Render
+    instance awake, and to verify quickly after a deploy that the CSV was
+    found and treated without errors, without having to open a full page.
+    """
+    try:
+        df = data.get_dataset()
+        payload = {
+            "status": "ok",
+            "linhas": int(df.shape[0]),
+            "colunas": int(df.shape[1]),
+            "times_do_grupo": config.TEAM_CODES,
+        }
+        return jsonify(payload), 200
+    except Exception as exc:  # pragma: no cover - defensive: surface the failure instead of a bare 500
+        return jsonify({"status": "erro", "detalhe": str(exc)}), 500
 
 
 # ----------------------------------------------------------------------------
